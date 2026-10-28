@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Beccami – Chatta con persone nuove, in italiano</title>
+<meta name="description" content="Beccami: chat anonime tra italiani. Scegli un interesse, vieni abbinato a qualcuno e salta quando vuoi.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="/icona.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <a class="logo" href="/">becca<b>mi</b></a>
+    <span class="online"><i></i><span id="onl">–</span> online</span>
+    <button id="tema" class="ic" aria-label="Cambia tema"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor"/></svg></button>
+    <button id="btnStanze" hidden>Stanze</button>
+    <button id="btnContatti" hidden>Contatti<span id="badge" hidden></span></button>
+    <button id="btnAccount">Accedi</button>
+  </header>
+
+  <main id="home" class="view on">
+    <div class="wrap">
+      <h1>Parla con qualcuno di nuovo.</h1>
+      <p class="lead">Chat anonime tra italiani, in un click. Scegli di cosa ti va di parlare oppure lascia fare al caso.</p>
+      <div id="avviso" class="avviso" hidden></div>
+
+      <h2>I tuoi interessi <span class="mute">(facoltativi, anche più di uno)</span></h2>
+      <div class="chips" id="chips"></div>
+
+      <div class="modi" role="group" aria-label="Tipo di chat">
+        <button type="button" id="modoT" class="seg on" aria-pressed="true">Chat di testo</button>
+        <button type="button" id="modoV" class="seg" aria-pressed="false">Video chat <small>Premium</small></button>
+      </div>
+
+      <label class="check"><input type="checkbox" id="age"><span>Ho almeno 18 anni e accetto i <a href="/termini.html">Termini</a> e l’<a href="/privacy.html">Informativa privacy</a>.</span></label>
+      <div class="cta">
+        <button class="p" id="go">Inizia a chattare</button>
+        <button id="reg">Crea account Premium · 5 € al mese</button>
+        <button id="regC">Diventa Contributore · 8 € al mese</button>
+      </div>
+
+      <div class="grid">
+        <div class="card"><h3>Anonimo e leggero</h3><p>Senza registrazione e senza cronologia salvata. Solo gli utenti Premium possono conservare le chat con i contatti che scelgono.</p></div>
+        <div class="card"><h3>Foto che si autodistruggono</h3><p>Il link si apre una volta sola, poi la foto non è più visibile. Gli screenshot non si possono impedire: invia solo ciò che sei pronto a condividere.</p></div>
+        <div class="card"><h3>Salta quando vuoi</h3><p>Premi due volte “Salta” e passi alla persona successiva. Puoi anche segnalare chi non rispetta le regole.</p></div>
+        <div class="card prem"><h3>Premium · 5 € al mese</h3><p>Profilo con nome, età, sesso e foto, video chat, contatti da salvare per riprendere la conversazione e accesso a tutte le stanze.</p></div>
+        <div class="card prem"><h3>Contributore · 8 € al mese</h3><p>Tutto il Premium, più la possibilità di creare stanze tematiche con le tue regole, dove si uniscono gli abbonati.</p></div>
+      </div>
+
+      <footer>
+        <a href="/privacy.html">Privacy</a><a href="/termini.html">Termini</a><a href="/regole.html">Regole della community</a>
+        <span>Solo maggiorenni · Fatto per l’Italia</span>
+      </footer>
+    </div>
+  </main>
+
+  <section id="chat" class="view">
+    <div class="bar">
+      <div class="av" id="pav">?</div>
+      <div class="who"><b id="pname">Ricerca…</b><span id="pmeta"></span></div>
+      <button id="btnSalva" hidden>Salva</button>
+      <button id="btnSegnala">Segnala</button>
+      <button id="btnEsci">Esci</button>
+    </div>
+    <div id="video" class="video" hidden>
+      <video id="remoto" autoplay playsinline></video>
+      <video id="locale" autoplay playsinline muted></video>
+      <div class="vcmd"><button id="vMic" type="button">Microfono</button><button id="vCam" type="button">Camera</button></div>
+    </div>
+    <div id="msgs" aria-live="polite"></div>
+    <form id="f">
+      <input type="file" id="file" accept="image/*" hidden>
+      <button type="button" id="btnFoto" aria-label="Invia una foto che si autodistrugge">Foto</button>
+      <input type="text" id="txt" placeholder="Scrivi un messaggio" maxlength="500" autocomplete="off" aria-label="Messaggio">
+      <button class="p" type="submit">Invia</button>
+      <button type="button" id="skip">Salta</button>
+    </form>
+  </section>
+
+  <section id="contatti" class="view">
+    <div class="wrap" id="listaC">
+      <h2 class="grande">I tuoi contatti</h2>
+      <p class="mute">Qui trovi le persone che avete salvato a vicenda. Puoi riprendere la chat quando vuoi.</p>
+      <div id="elencoC" class="elenco"></div>
+      <div class="cta"><button id="indietroC">Indietro</button></div>
+    </div>
+    <div id="threadC" class="thread" hidden>
+      <div class="bar"><div class="av" id="dav">?</div><div class="who"><b id="dname"></b><span id="dmeta"></span></div><button id="indietroD">Contatti</button></div>
+      <div id="dmsgs"></div>
+      <form id="fd"><input type="text" id="dtxt" placeholder="Scrivi un messaggio" maxlength="500" autocomplete="off" aria-label="Messaggio"><button class="p" type="submit">Invia</button></form>
+    </div>
+  </section>
+
+  <section id="stanze" class="view">
+    <div class="wrap">
+      <h2 class="grande">Stanze</h2>
+      <p class="mute">Stanze tematiche create dai Contributori, ognuna con le sue regole. Le conversazioni delle stanze non vengono conservate.</p>
+      <div class="cta"><select id="sCat" aria-label="Categoria"></select><button class="p" id="sNuova">Crea una stanza</button><button id="sIndietro">Indietro</button></div>
+      <div id="elencoS" class="elenco"></div>
+    </div>
+  </section>
+
+  <section id="stanza" class="view">
+    <div class="bar">
+      <div class="who"><b id="rNome"></b><span id="rMeta"></span></div>
+      <button id="rMembri">Persone</button><button id="rRegole">Regole</button><button id="rGestisci" hidden>Gestisci</button><button id="rEsci">Esci</button>
+    </div>
+    <div class="corpoStanza" id="corpoS"><div id="rmsgs" aria-live="polite"></div><aside id="rLista" hidden></aside></div>
+    <form id="fr"><input type="text" id="rtxt" placeholder="Scrivi alla stanza" maxlength="500" autocomplete="off" aria-label="Messaggio"><button class="p" type="submit">Invia</button></form>
+  </section>
+</div>
+
+<dialog id="dNuova">
+  <form id="fNuova">
+    <h2>Crea una stanza</h2>
+    <div class="campi">
+      <label>Nome<input type="text" id="nNome" maxlength="40" minlength="3" required></label>
+      <label>Categoria<select id="nCat"></select></label>
+      <label>Descrizione (facoltativa)<input type="text" id="nDesc" maxlength="200"></label>
+      <label>Regole della stanza<textarea id="nReg" rows="5" maxlength="1000" minlength="10" required placeholder="Scrivi cosa si può e cosa non si può fare"></textarea></label>
+    </div>
+    <p class="err" id="nErr" role="alert"></p>
+    <div class="cta"><button class="p" type="submit">Crea ed entra</button><button type="button" id="nChiudi">Annulla</button></div>
+  </form>
+</dialog>
+
+<dialog id="dRegole"><h2 id="rgTit"></h2><p class="mute" id="rgMeta"></p><p id="rgTesto" class="regoleTesto"></p><div class="cta"><button class="p" id="rgOk">Accetto le regole ed entro</button><button id="rgChiudi">Chiudi</button></div></dialog>
+
+<dialog id="dGestisci">
+  <h2>Gestisci la stanza</h2>
+  <div class="campi">
+    <label>Descrizione<input type="text" id="gDesc" maxlength="200"></label>
+    <label>Regole<textarea id="gReg" rows="6" maxlength="1000"></textarea></label>
+  </div>
+  <div class="cta"><button class="p" id="gSalva">Salva modifiche</button><button id="gElimina">Elimina stanza</button><button id="gChiudi">Chiudi</button></div>
+</dialog>
+
+<dialog id="dAuth">
+  <form id="fAuth">
+    <h2 id="authTit">Accedi</h2>
+    <div class="campi">
+      <label>Email<input type="email" id="aEmail" required autocomplete="email"></label>
+      <label>Password<input type="password" id="aPass" required minlength="8" autocomplete="current-password"></label>
+      <div id="campiReg" hidden>
+        <label>Abbonamento<select id="aPiano"><option value="premium">Premium · 5 € al mese</option><option value="contributore">Contributore · 8 € al mese (crea stanze)</option></select></label>
+        <label>Nome<input type="text" id="aNome" maxlength="24" autocomplete="given-name"></label>
+        <label>Età<input type="number" id="aEta" min="18" max="99" inputmode="numeric"></label>
+        <label>Sesso<select id="aSesso"><option value="">Seleziona</option><option>Donna</option><option>Uomo</option><option>Altro</option></select></label>
+        <label>Immagine profilo (facoltativa)<input type="file" id="aAvatar" accept="image/*"></label>
+        <label class="check"><input type="checkbox" id="aAcc"><span>Ho almeno 18 anni e accetto <a href="/termini.html">Termini</a> e <a href="/privacy.html">Privacy</a>.</span></label>
+        <p class="mute" id="aPrezzo"></p>
+      </div>
+    </div>
+    <p class="err" id="aErr" role="alert"></p>
+    <div class="cta"><button class="p" type="submit" id="aOk">Accedi</button><button type="button" id="aAltro">Crea account</button><button type="button" id="aChiudi">Chiudi</button></div>
+  </form>
+</dialog>
+
+<dialog id="dAcc"><div id="accCont"></div><div class="cta"><button type="button" id="accChiudi">Chiudi</button></div></dialog>
+
+<dialog id="dFoto">
+  <canvas id="fc" aria-label="Foto"></canvas>
+  <p class="mute">Questa foto non potrà più essere aperta.</p>
+  <div class="cta"><button type="button" id="fSegnala">Segnala foto</button><button type="button" class="p" id="fChiudi">Chiudi</button></div>
+</dialog>
+
+<dialog id="dBan"><div id="banCont"></div><div class="cta"><button type="button" id="banSblocca" hidden>Sblocca ora · 15 €</button><button type="button" id="banChiudi">Chiudi</button></div></dialog>
+
+<div id="toast" role="status"></div>
+<script src="/app.js"></script>
+</body>
+</html>

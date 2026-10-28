@@ -1,0 +1,45 @@
+{
+  "name": "beccami",
+  "main": "src/index.js",
+  "compatibility_date": "2025-10-01",
+
+  // Sito statico (cartella public). Le rotte /api/* e /ws passano dal Worker.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/ws", "/ws-stanza"]
+  },
+
+  // Database D1: sostituisci l'ID con quello del tuo database "beccami".
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "beccami",
+      "database_id": "INSERISCI_QUI_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Server delle chat in tempo reale (Durable Object).
+  "durable_objects": {
+    "bindings": [
+      { "name": "LOBBY", "class_name": "Lobby" },
+      { "name": "STANZA", "class_name": "Stanza" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Lobby"] },
+    { "tag": "v2", "new_sqlite_classes": ["Stanza"] }
+  ],
+
+  // Impostazioni non segrete. I SEGRETI (chiavi) si inseriscono dalla dashboard Cloudflare.
+  "vars": {
+    "N8N_URL": "https://n8n.rosscoding.com",
+    // "1" = registrazione Premium gratuita per fare prove. Metti "0" prima di aprire al pubblico.
+    "MODALITA_PROVA": "1",
+    "STRIPE_PRICE_PREMIUM": "",
+    "STRIPE_PRICE_CONTRIBUTORE": "",
+    "STRIPE_PRICE_SBLOCCO": "",
+    "TURN_KEY_ID": ""
+  }
+}
