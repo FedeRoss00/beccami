@@ -36,7 +36,7 @@
   "vars": {
     "N8N_URL": "https://n8n.rosscoding.com",
     // "1" = registrazione Premium gratuita per fare prove. Metti "0" prima di aprire al pubblico.
-    "MODALITA_PROVA": "1",
+    "MODALITA_PROVA": "0",
     "STRIPE_PRICE_PREMIUM": "",
     "STRIPE_PRICE_CONTRIBUTORE": "",
     "STRIPE_PRICE_SBLOCCO": "",
