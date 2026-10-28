@@ -1,7 +1,7 @@
 {
   "name": "beccami",
   "main": "src/index.js",
-  "compatibility_date": "2025-10-01",
+  "compatibility_date": "2026-03-01",
 
   // Sito statico (cartella public). Le rotte /api/* e /ws passano dal Worker.
   "assets": {
