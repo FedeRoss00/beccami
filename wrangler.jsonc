@@ -15,7 +15,7 @@
     {
       "binding": "DB",
       "database_name": "beccami",
-      "database_id": "INSERISCI_QUI_DATABASE_ID",
+      "database_id": "370bbb90-b14f-4eca-b3be-4e9cb64a9c22",
       "migrations_dir": "migrations"
     }
   ],
