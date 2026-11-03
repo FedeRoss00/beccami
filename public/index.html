@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Beccami – Chatta con persone nuove, in italiano</title>
 <meta name="description" content="Beccami: chat anonime tra italiani. Scegli un interesse, vieni abbinato a qualcuno e salta quando vuoi.">
 <meta name="color-scheme" content="light dark">
@@ -69,12 +69,13 @@
       <video id="locale" autoplay playsinline muted></video>
       <div class="vcmd"><button id="vMic" type="button">Microfono</button><button id="vCam" type="button">Camera</button></div>
     </div>
+    <div id="cercando" class="cercando" hidden><div class="spin" aria-hidden="true"></div><p id="cercTxt">Cerco qualcuno…</p><p class="mute" id="cercN"></p></div>
     <div id="msgs" aria-live="polite"></div>
     <form id="f">
       <input type="file" id="file" accept="image/*" hidden>
       <button type="button" id="btnFoto" aria-label="Invia una foto che si autodistrugge">Foto</button>
       <input type="text" id="txt" placeholder="Scrivi un messaggio" maxlength="500" autocomplete="off" aria-label="Messaggio">
-      <button class="p" type="submit">Invia</button>
+      <button class="p" type="submit" id="btnInvia">Invia</button>
       <button type="button" id="skip">Salta</button>
     </form>
   </section>

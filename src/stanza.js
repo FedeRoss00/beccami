@@ -51,7 +51,8 @@ export class Stanza extends DurableObject {
       return new Response(null, { status: 101, webSocket: client });
     }
     const { stanza, ...base } = info;
-    server.serializeAttachment({ ...base, rw: 0, rn: 0 });
+    server.serializeAttachment({ ...base, rw: 0, rn: 0, ult: Date.now() });
+    if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + 30000);
     this.inv(server, { t: "benvenuto", ruolo: info.r, io: info.u, info: stanza, membri: this.membri() });
     if (!prima.some((w) => this.st(w).u === info.u)) this.tutti({ t: "entra", m: { id: info.u, nome: info.n, av: info.a, r: info.r } }, server);
     await this.aggiornaOnline(info.sid);
@@ -62,8 +63,10 @@ export class Stanza extends DurableObject {
     if (typeof raw !== "string" || raw.length > 4000) return;
     let m;
     try { m = JSON.parse(raw); } catch { return; }
+    ws.serializeAttachment({ ...this.st(ws), ult: Date.now() });
     const s = this.st(ws);
     if (!s.u) return;
+    if (m.t === "ping") { this.inv(ws, { t: "pong" }); return; }
     try {
       switch (m.t) {
         case "msg": {
@@ -121,6 +124,13 @@ export class Stanza extends DurableObject {
       console.error(e);
       this.inv(ws, { t: "errore", x: "Si è verificato un errore. Riprova." });
     }
+  }
+
+  async alarm() {
+    const aperti = this.aperti();
+    if (!aperti.length) return;
+    for (const w of aperti) if (Date.now() - (this.st(w).ult || 0) > 90000) { try { w.close(1001, "inattivo"); } catch {} }
+    await this.ctx.storage.setAlarm(Date.now() + 30000);
   }
 
   async uscito(ws) {

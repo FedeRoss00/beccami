@@ -3,10 +3,13 @@
 :root[data-theme="dark"]{--bg:#141210;--sf:#1d1a17;--ink:#f5f0eb;--mute:#a39a92;--line:#2e2a26;--acc:#ff7a2e;--on:#1a0d03;--soft:#2a1a10;--them:#2a2622;--err:#ff8a80;color-scheme:dark}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
-html,body{height:100%;margin:0}
+html,body{height:100%;margin:0;overscroll-behavior:none}
 body{background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 a{color:var(--acc)}
-#app{display:flex;flex-direction:column;height:100%}
+/* L'app occupa esattamente lo schermo visibile (tastiera esclusa): --vvh e --vvt li aggiorna app.js */
+#app{position:fixed;left:0;right:0;top:var(--vvt,0px);height:var(--vvh,100dvh);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.kb #app{padding-bottom:0}
+.kb .video{height:26%}
 header{display:flex;align-items:center;gap:.6rem;padding:.7rem 1rem;border-bottom:1px solid var(--line);background:var(--sf)}
 .logo{font-weight:800;font-size:1.3rem;letter-spacing:-.03em;margin-right:auto;text-decoration:none;color:var(--ink)}
 .logo b{color:var(--acc)}
@@ -75,7 +78,7 @@ footer a{color:inherit}
 .elenco{display:grid;gap:.75rem;margin-top:1rem}
 .ct{display:flex;align-items:center;gap:.75rem;background:var(--sf);border:1px solid var(--line);border-radius:12px;padding:.75rem 1rem}
 .ct .who span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-dialog{border:1px solid var(--line);border-radius:16px;background:var(--sf);color:var(--ink);padding:1.25rem;width:min(26rem,calc(100% - 2rem))}
+dialog{max-height:calc(100% - 2rem);overflow:auto;border:1px solid var(--line);border-radius:16px;background:var(--sf);color:var(--ink);padding:1.25rem;width:min(26rem,calc(100% - 2rem))}
 dialog::backdrop{background:rgba(0,0,0,.55)}
 dialog h2{margin:0 0 .75rem;font-size:1.25rem}
 .campi{display:grid;gap:.75rem}
@@ -102,6 +105,33 @@ dialog h2{margin:0 0 .75rem;font-size:1.25rem}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
 @media (max-width:30rem){#locale{width:5rem;height:6.5rem}.cta button{width:100%}}
+.cercando{display:flex;flex-direction:column;align-items:center;gap:.35rem;padding:1.25rem 1rem;text-align:center;border-bottom:1px solid var(--line);background:var(--sf)}
+.cercando[hidden]{display:none}
+.cercando p{margin:0}
+.spin{width:2.75rem;height:2.75rem;border-radius:50%;border:.3rem solid var(--soft);border-top-color:var(--acc);animation:gira 1s linear infinite}
+@keyframes gira{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}}
+@media (max-width:40rem){
+  header{flex-wrap:wrap;gap:.4rem;padding:.5rem .75rem}
+  .logo{font-size:1.15rem}
+  header button{padding:.35rem .7rem;font-size:.8125rem}
+  header button.ic{padding:.4rem .5rem}
+  .online{font-size:.8125rem}
+  #btnAccount{max-width:9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wrap{padding:1.5rem 1rem 2.5rem}
+  .bar{flex-wrap:wrap;gap:.4rem;padding:.5rem .75rem}
+  .bar .who{flex:1 1 8rem}
+  #msgs,#dmsgs,#rmsgs{padding:.75rem}
+  .m{max-width:88%}
+  #f{display:grid;grid-template-columns:1fr auto;grid-template-areas:"txt send" "foto skip";gap:.5rem;padding:.6rem .75rem}
+  #f #txt{grid-area:txt}
+  #f #btnInvia{grid-area:send}
+  #f #btnFoto{grid-area:foto;justify-self:start}
+  #f #skip{grid-area:skip;justify-self:end}
+  #fd,#fr{padding:.6rem .75rem}
+  .ct{flex-wrap:wrap}
+  .video{height:min(38dvh,22rem)}
+}
 .legale{max-width:42rem;margin:0 auto;padding:2rem 1.25rem 4rem}
 .legale h1{font-size:2rem;max-width:none}
 .legale h2{margin-top:1.75rem}

@@ -4,7 +4,11 @@
 import { DurableObject } from "cloudflare:workers";
 import { TAGS, banAttivo, valutaBan, normalizza, messaggioBloccato, sha256 } from "./lib.js";
 
-const PERIODO = 15000; // ogni 15 s: statistiche + abbinamenti di riserva
+const PERIODO = 15000;   // controllo generale ogni 15 s
+const RAPIDO = 3000;     // finché qualcuno cerca, controllo ogni 3 s
+const ATTESA = 8000;     // dopo 8 s si abbina anche chi non ha interessi in comune
+const VIVO = 75000;      // senza segnali da una scheda visibile per 75 s: connessione considerata morta
+const VIVO_NASCOSTO = 300000; // scheda in background: 5 minuti
 const MAX_MSG = 500;
 
 export class Lobby extends DurableObject {
@@ -21,7 +25,7 @@ export class Lobby extends DurableObject {
     const { 0: client, 1: server } = new WebSocketPair();
     const c = crypto.randomUUID().slice(0, 8);
     this.ctx.acceptWebSocket(server, [c]);
-    server.serializeAttachment({ c, ...info, st: "i", int: [], mode: "t", peer: null, last: null, m: 0, rw: 0, rn: 0, since: 0 });
+    server.serializeAttachment({ c, ...info, st: "i", int: [], mode: "t", peer: null, last: null, m: 0, rw: 0, rn: 0, since: 0, vis: 1, ult: Date.now() });
     server.send(JSON.stringify({ t: "hello", ...this.stats() }));
     await this.programma();
     return new Response(null, { status: 101, webSocket: client });
@@ -29,6 +33,9 @@ export class Lobby extends DurableObject {
 
   // ---- utilità ----
   aperti() { return this.ctx.getWebSockets().filter((w) => w.readyState === 1); }
+  vivo(s) { return Date.now() - (s.ult || 0) < (s.vis ? VIVO : VIVO_NASCOSTO); }
+  // solo chi ha il sito aperto in primo piano e dà segni di vita viene contato e abbinato
+  attivi() { return this.aperti().filter((w) => { const s = this.stato(w); return s.vis && this.vivo(s); }); }
   stato(w) { return w.deserializeAttachment() || {}; }
   agg(w, patch) { const s = { ...this.stato(w), ...patch }; w.serializeAttachment(s); return s; }
   invia(w, o) { try { w.send(JSON.stringify(o)); } catch {} }
@@ -37,21 +44,29 @@ export class Lobby extends DurableObject {
     const p = s.peer ? this.ctx.getWebSockets(s.peer)[0] : null;
     return p && p.readyState === 1 ? p : null;
   }
-  stats(ws = this.aperti()) {
+  stats(ws = this.attivi()) {
     const interessi = TAGS.map(() => 0);
     ws.forEach((w) => (this.stato(w).int || []).forEach((i) => interessi[i]++));
     return { online: ws.length, interessi };
   }
-  async programma() {
-    if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + PERIODO);
+  async programma(ms = PERIODO) {
+    const a = await this.ctx.storage.getAlarm(), t = Date.now() + ms;
+    if (!a || a > t) await this.ctx.storage.setAlarm(t);
   }
   async alarm() {
-    const ws = this.aperti();
-    if (!ws.length) return;
-    this.abbinaInAttesa(ws);
-    const m = JSON.stringify({ t: "stats", ...this.stats(ws) });
-    ws.forEach((w) => { try { w.send(m); } catch {} });
-    await this.ctx.storage.setAlarm(Date.now() + PERIODO);
+    const tutti = this.aperti();
+    if (!tutti.length) return;
+    // chiude le connessioni "fantasma" (telefono spento, rete persa, scheda dimenticata)
+    for (const w of tutti) if (!this.vivo(this.stato(w))) { try { w.close(1001, "inattivo"); } catch {} }
+    const vivi = this.attivi();
+    this.abbinaInAttesa(vivi);
+    if (Date.now() - (this.ultStats || 0) > PERIODO - 1000) {
+      this.ultStats = Date.now();
+      const m = JSON.stringify({ t: "stats", ...this.stats(vivi) });
+      this.aperti().forEach((w) => { try { w.send(m); } catch {} });
+    }
+    const inCoda = this.attivi().some((w) => this.stato(w).st === "q");
+    await this.ctx.storage.setAlarm(Date.now() + (inCoda ? RAPIDO : PERIODO));
   }
   async caricaParole() {
     if (!this.parole || Date.now() - this.paroleTs > 300000) {
@@ -73,13 +88,14 @@ export class Lobby extends DurableObject {
   }
 
   // ---- abbinamento ----
-  compatibili(a, b) {
-    return b.st === "q" && b.mode === a.mode && b.u !== a.u && b.u !== a.last && a.u !== b.last;
+  // rilassa = true: dopo un po' di attesa si può ritrovare anche l'ultima persona incontrata
+  compatibili(a, b, rilassa = false) {
+    return b.st === "q" && b.vis && this.vivo(b) && b.mode === a.mode && b.u !== a.u && (rilassa || (b.u !== a.last && a.u !== b.last));
   }
   prova(ws) {
     const me = this.stato(ws);
     let best = null, bs = -1;
-    for (const w of this.aperti()) {
+    for (const w of this.attivi()) {
       if (w === ws) continue;
       const s = this.stato(w);
       if (!this.compatibili(me, s)) continue;
@@ -91,12 +107,12 @@ export class Lobby extends DurableObject {
     if (best) this.unisci(best, ws);
   }
   abbinaInAttesa(ws) {
-    const att = ws.filter((w) => { const s = this.stato(w); return s.st === "q" && Date.now() - s.since > 12000; })
+    const att = ws.filter((w) => { const s = this.stato(w); return s.st === "q" && Date.now() - s.since > ATTESA; })
       .sort((x, y) => this.stato(x).since - this.stato(y).since);
     for (const a of att) {
       if (this.stato(a).st !== "q") continue;
       for (const b of att) {
-        if (a === b || !this.compatibili(this.stato(a), this.stato(b))) continue;
+        if (a === b || !this.compatibili(this.stato(a), this.stato(b), true)) continue;
         this.unisci(a, b);
         break;
       }
@@ -132,9 +148,18 @@ export class Lobby extends DurableObject {
     if (typeof raw !== "string" || raw.length > 12000) return;
     let m;
     try { m = JSON.parse(raw); } catch { return; }
+    this.agg(ws, { ult: Date.now() });
     const s = this.stato(ws);
     try {
       switch (m.t) {
+        case "ping": this.invia(ws, { t: "pong" }); break;
+        case "vis": {
+          const v = m.v ? 1 : 0;
+          this.agg(ws, { vis: v });
+          // chi lascia il sito in background esce dalla coda: tornerà a cercare quando riapre
+          if (!v && s.st === "q") { this.agg(ws, { st: "i" }); this.invia(ws, { t: "sospeso" }); }
+          break;
+        }
         case "interessi": {
           const int = [...new Set((m.int || []).filter((i) => Number.isInteger(i) && i >= 0 && i < TAGS.length))];
           this.agg(ws, { int });
@@ -146,9 +171,10 @@ export class Lobby extends DurableObject {
           if (ban) { this.invia(ws, { t: "banned", fino: ban.permanente ? null : ban.scade_il, motivo: ban.motivo, permanente: !!ban.permanente }); break; }
           const mode = m.mode === "v" ? "v" : "t";
           if (mode === "v" && !s.p) { this.invia(ws, { t: "errore", x: "La video chat è riservata agli utenti Premium." }); break; }
-          this.agg(ws, { st: "q", mode, since: Date.now(), peer: null, m: 0 });
+          this.agg(ws, { st: "q", mode, since: Date.now(), peer: null, m: 0, vis: 1 });
           this.invia(ws, { t: "cerco" });
           this.prova(ws);
+          await this.programma(RAPIDO);
           break;
         }
         case "skip":

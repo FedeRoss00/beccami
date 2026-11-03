@@ -8,6 +8,21 @@ const S = {
   dm: null, nuovi: 0, reg: false, tokFoto: null,
 };
 
+// ---------- schermo del telefono: segue l'altezza visibile, tastiera compresa ----------
+(function () {
+  const vv = window.visualViewport, r = document.documentElement;
+  function adatta() {
+    r.style.setProperty("--vvh", (vv ? vv.height : window.innerHeight) + "px");
+    r.style.setProperty("--vvt", (vv ? vv.offsetTop : 0) + "px");
+    r.classList.toggle("kb", !!vv && window.innerHeight - vv.height > 120);
+    const m = $("#msgs"); if (m) m.scrollTop = m.scrollHeight;
+    const rm = $("#rmsgs"); if (rm) rm.scrollTop = rm.scrollHeight;
+  }
+  if (vv) { vv.addEventListener("resize", adatta); vv.addEventListener("scroll", adatta); }
+  window.addEventListener("resize", adatta); window.addEventListener("orientationchange", adatta);
+  adatta();
+})();
+
 // ---------- utilità ----------
 function toast(t) {
   const e = $("#toast");
@@ -57,6 +72,7 @@ function intestazione() {
   $("#btnAccount").textContent = io.registrato ? io.nome + (io.premium ? " · " + (io.piano === "contributore" ? "Contributore" : "Premium") : "") : "Accedi";
   $("#btnContatti").hidden = !io.premium;
   $("#onl").textContent = S.stats.online ? S.stats.online.toLocaleString("it-IT") : "–";
+  $("#cercN").textContent = S.stats.online ? S.stats.online.toLocaleString("it-IT") + " persone online ora" : "";
   $("#reg").hidden = !!io.registrato;
   $("#regC").hidden = !!io.registrato;
   $("#btnStanze").hidden = !io.premium;
@@ -110,8 +126,9 @@ function connetti() {
   S.ws = ws;
   ws.onopen = () => {
     S.retry = 0;
+    invia({ t: "vis", v: document.hidden ? 0 : 1 });
     if (S.sel.size) invia({ t: "interessi", int: [...S.sel] });
-    if (S.chat && !S.partner) cerca();
+    if (S.chat && !S.partner && !document.hidden) cerca();
   };
   ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } gestisci(m); };
   ws.onclose = () => {
@@ -128,8 +145,10 @@ function gestisci(m) {
       S.stats = { online: m.online, interessi: m.interessi }; intestazione();
       if ($("#home").classList.contains("on")) chips();
       break;
-    case "cerco": break;
+    case "cerco": case "sospeso": break;
+    case "pong": clearTimeout(S.pongT); break;
     case "match":
+      mostraCerca(false);
       S.partner = m.partner; profilo(m.partner);
       sistema(m.comuni.length ? "Siete connessi. Interessi in comune: " + m.comuni.join(", ") + "." : "Siete connessi. Salutatevi!");
       if (m.mode === "v") avviaVideo(m.ruolo);
@@ -167,13 +186,22 @@ function profilo(p) {
   $("#pmeta").textContent = p ? (p.premium ? p.sesso + " · " + p.eta + " anni · Premium" : "Ospite") : "";
   $("#btnSalva").hidden = !(p && p.premium && S.io.premium);
 }
+function mostraCerca(on) {
+  clearTimeout(S.cercaT);
+  $("#cercando").hidden = !on;
+  if (!on) return;
+  $("#cercTxt").textContent = "Cerco qualcuno…";
+  S.cercaT = setTimeout(() => {
+    $("#cercTxt").textContent = S.sel.size ? "Nessuno con i tuoi interessi per ora: cerco chiunque…" : "Ancora nessuno libero: resta qui, ti abbineremo appena arriva qualcuno.";
+  }, 8000);
+}
 function cerca() {
-  S.partner = null; chiudiVideo(); profilo(null);
+  S.partner = null; chiudiVideo(); profilo(null); mostraCerca(true);
   $("#pname").textContent = "Cerco qualcuno…";
   invia({ t: "join", mode: S.mode });
 }
 function esciChat() {
-  S.chat = false; S.partner = null; chiudiVideo();
+  S.chat = false; S.partner = null; chiudiVideo(); mostraCerca(false);
   if (S.stream) { S.stream.getTracks().forEach((t) => t.stop()); S.stream = null; }
   vista("home");
 }
@@ -247,7 +275,31 @@ $("#fChiudi").onclick = () => chiudiDlg("#dFoto");
 $("#fSegnala").onclick = async () => {
   try { await api("/api/foto/segnala", { tok: S.tokFoto }); toast("Foto segnalata. Grazie."); chiudiDlg("#dFoto"); } catch (e) { toast(e.message); }
 };
-document.addEventListener("visibilitychange", () => $("#dFoto").classList.toggle("nascosta", document.hidden));
+// ---------- presenza e controllo della connessione ----------
+function verificaConnessione() {
+  invia({ t: "ping" });
+  clearTimeout(S.pongT);
+  S.pongT = setTimeout(() => {
+    const vecchia = S.ws;
+    if (vecchia) { vecchia.onclose = null; try { vecchia.close(); } catch {} }
+    S.ws = null;
+    if (S.chat && S.partner) { sistema("Connessione persa. Riconnessione in corso…"); S.partner = null; chiudiVideo(); profilo(null); }
+    S.retry = 0; connetti();
+  }, 4000);
+}
+setInterval(() => {
+  if (document.hidden) return;
+  invia({ t: "ping" });
+  if (S.st && S.st.ws.readyState === 1) S.st.ws.send(JSON.stringify({ t: "ping" }));
+}, 20000);
+window.addEventListener("online", () => { S.retry = 0; connetti(); });
+document.addEventListener("visibilitychange", () => {
+  $("#dFoto").classList.toggle("nascosta", document.hidden);
+  invia({ t: "vis", v: document.hidden ? 0 : 1 });   // chi è in background non conta come online
+  if (document.hidden) return;
+  if (!S.ws || S.ws.readyState > 1) { S.retry = 0; connetti(); } else verificaConnessione();
+  if (S.chat && !S.partner) cerca();
+});
 
 // ---------- video chat (Premium) ----------
 async function avviaVideo(ruolo) {
