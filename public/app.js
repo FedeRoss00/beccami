@@ -149,12 +149,13 @@ function gestisci(m) {
     case "pong": clearTimeout(S.pongT); break;
     case "match":
       mostraCerca(false);
+      $("#msgs").replaceChildren();
       S.partner = m.partner; profilo(m.partner);
       sistema(m.comuni.length ? "Siete connessi. Interessi in comune: " + m.comuni.join(", ") + "." : "Siete connessi. Salutatevi!");
       if (m.mode === "v") avviaVideo(m.ruolo);
       break;
-    case "msg": aggiungi("t", m.x); break;
-    case "peer_left": if (!S.chat) break; sistema("L’altra persona ha lasciato la chat."); cerca(); break;
+    case "msg": if (S.partner) aggiungi("t", m.x); break;
+    case "peer_left": if (!S.chat) break; $("#msgs").replaceChildren(); cerca("L’altra persona ha lasciato la chat. Cerco qualcuno di nuovo…"); break;
     case "bloccato": sistema("Messaggio non inviato: contiene " + m.motivo + "."); break;
     case "lento": toast("Stai scrivendo troppo in fretta."); break;
     case "errore": toast(m.x); break;
@@ -164,7 +165,7 @@ function gestisci(m) {
         : "Contatto salvato. Quando salverà anche l’altra persona, la chat verrà conservata.");
       break;
     case "richiesta_salva": sistema(m.nome + " vuole salvare la chat. Premi “Salva” se vuoi."); break;
-    case "foto": bollaFoto(m.tok); break;
+    case "foto": if (S.partner) bollaFoto(m.tok); break;
     case "dm": ricevutoDm(m); break;
     case "sdp": case "ice": if (S.pc) segnale(m); else S.pend.push(m); break;
     case "banned": mostraBan({ fino: m.fino, permanente: m.permanente }); esciChat(); S.io.ban = { fino: m.fino, permanente: m.permanente }; break;
@@ -186,17 +187,17 @@ function profilo(p) {
   $("#pmeta").textContent = p ? (p.premium ? p.sesso + " · " + p.eta + " anni · Premium" : "Ospite") : "";
   $("#btnSalva").hidden = !(p && p.premium && S.io.premium);
 }
-function mostraCerca(on) {
+function mostraCerca(on, nota) {
   clearTimeout(S.cercaT);
   $("#cercando").hidden = !on;
   if (!on) return;
-  $("#cercTxt").textContent = "Cerco qualcuno…";
+  $("#cercTxt").textContent = nota || "Cerco qualcuno…";
   S.cercaT = setTimeout(() => {
     $("#cercTxt").textContent = S.sel.size ? "Nessuno con i tuoi interessi per ora: cerco chiunque…" : "Ancora nessuno libero: resta qui, ti abbineremo appena arriva qualcuno.";
   }, 8000);
 }
-function cerca() {
-  S.partner = null; chiudiVideo(); profilo(null); mostraCerca(true);
+function cerca(nota) {
+  S.partner = null; chiudiVideo(); profilo(null); mostraCerca(true, nota);
   $("#pname").textContent = "Cerco qualcuno…";
   invia({ t: "join", mode: S.mode });
 }
@@ -224,7 +225,7 @@ $("#skip").onclick = () => {
   const b = $("#skip");
   if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "Premi ancora per saltare"; clearTimeout(arma); arma = setTimeout(disarma, 2000); return; }
   disarma();
-  if (S.partner) sistema("Hai saltato la chat.");
+  $("#msgs").replaceChildren();
   invia({ t: "skip" }); cerca();
 };
 
