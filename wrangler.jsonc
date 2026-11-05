@@ -35,11 +35,13 @@
   // Impostazioni non segrete. I SEGRETI (chiavi) si inseriscono dalla dashboard Cloudflare.
   "vars": {
     "N8N_URL": "https://n8n.rosscoding.com",
-    // "1" = registrazione Premium gratuita per fare prove. Metti "0" prima di aprire al pubblico.
     "MODALITA_PROVA": "0",
-    "STRIPE_PRICE_PREMIUM": "price_1UVWfCFQUCc07ictmrtQli5i",
-    "STRIPE_PRICE_CONTRIBUTORE": "price_1UVWgUFQUCc07ictqw8GwYNj",
-    "STRIPE_PRICE_SBLOCCO": "price_1UVWi4FQUCc07ictDmmQTmMQ",
-    "TURN_KEY_ID": "8a940e34edacacf6497bd27a3201626b"
+    "MODALITA_GRATUITA": "1",
+    "SOSTIENI_URL": "",
+    "FOTO_MAX": "0",
+    "STRIPE_PRICE_PREMIUM": "",
+    "STRIPE_PRICE_CONTRIBUTORE": "",
+    "STRIPE_PRICE_SBLOCCO": "",
+    "TURN_KEY_ID": ""
   }
 }
