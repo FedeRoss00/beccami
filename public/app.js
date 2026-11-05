@@ -50,6 +50,18 @@ $("#tema").onclick = () => {
   try { localStorage.setItem("tema", r.dataset.theme); } catch {}
 };
 
+// ---------- testi: sito gratuito oppure con abbonamenti ----------
+const msgVideo = () => (S.cfg.gratuito ? "La video chat richiede un account gratuito." : "La video chat è riservata agli utenti Premium.");
+function testiPiani() {
+  if (S.cfg.gratuito) return;
+  $("#reg").textContent = "Crea account Premium · 5 € al mese";
+  $("#cardA").querySelector("p").textContent = "Senza registrazione e senza cronologia salvata. Solo gli utenti Premium possono conservare le chat con i contatti che scelgono.";
+  $("#cardP").querySelector("h3").textContent = "Premium · 5 € al mese";
+  $("#cardP").querySelector("p").textContent = "Profilo con nome, età, sesso e foto, video chat, contatti da salvare per riprendere la conversazione e accesso a tutte le stanze.";
+  $("#cardC").querySelector("h3").textContent = "Contributore · 8 € al mese";
+  $("#cardC").querySelector("p").textContent = "Tutto il Premium, più la possibilità di creare stanze tematiche con le tue regole, dove si uniscono gli abbonati.";
+}
+
 // ---------- home ----------
 function chips() {
   const box = $("#chips");
@@ -69,12 +81,12 @@ function chips() {
 }
 function intestazione() {
   const io = S.io;
-  $("#btnAccount").textContent = io.registrato ? io.nome + (io.premium ? " · " + (io.piano === "contributore" ? "Contributore" : "Premium") : "") : "Accedi";
+  $("#btnAccount").textContent = io.registrato ? io.nome + (io.premium && !S.cfg.gratuito ? " · " + (io.piano === "contributore" ? "Contributore" : "Premium") : "") : "Accedi";
   $("#btnContatti").hidden = !io.premium;
   $("#onl").textContent = S.stats.online ? S.stats.online.toLocaleString("it-IT") : "–";
   $("#cercN").textContent = S.stats.online ? S.stats.online.toLocaleString("it-IT") + " persone online ora" : "";
   $("#reg").hidden = !!io.registrato;
-  $("#regC").hidden = !!io.registrato;
+  $("#regC").hidden = !!io.registrato || !!S.cfg.gratuito;
   $("#btnStanze").hidden = !io.premium;
   const av = $("#avviso");
   av.hidden = !(io.registrato && !io.premium);
@@ -94,7 +106,7 @@ async function pagamento(piano) {
   } catch (e) { toast(e.message); }
 }
 function setModo(m) {
-  if (m === "v" && !S.io.premium) return toast("La video chat è riservata agli utenti Premium.");
+  if (m === "v" && !S.io.premium) return toast(msgVideo());
   S.mode = m;
   $("#modoT").classList.toggle("on", m === "t"); $("#modoV").classList.toggle("on", m === "v");
   $("#modoT").setAttribute("aria-pressed", String(m === "t")); $("#modoV").setAttribute("aria-pressed", String(m === "v"));
@@ -107,7 +119,7 @@ $("#go").onclick = async () => {
   if (!$("#age").checked) return toast("Conferma di avere almeno 18 anni per continuare.");
   if (S.io.ban) return mostraBan(S.io.ban);
   if (S.mode === "v") {
-    if (!S.io.premium) return toast("La video chat è riservata agli utenti Premium.");
+    if (!S.io.premium) return toast(msgVideo());
     try { S.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); }
     catch { return toast("Non riesco ad accedere a camera e microfono. Controlla i permessi del browser."); }
   }
@@ -184,7 +196,7 @@ function profilo(p) {
   av.replaceChildren();
   if (p && p.avatar) { const i = el("img"); i.src = p.avatar; i.alt = ""; av.append(i); } else av.textContent = p ? p.nome[0] : "?";
   $("#pname").textContent = p ? p.nome : "Ricerca…";
-  $("#pmeta").textContent = p ? (p.premium ? p.sesso + " · " + p.eta + " anni · Premium" : "Ospite") : "";
+  $("#pmeta").textContent = p ? (p.premium ? p.sesso + " · " + p.eta + " anni" + (S.cfg.gratuito ? "" : " · Premium") : "Ospite") : "";
   $("#btnSalva").hidden = !(p && p.premium && S.io.premium);
 }
 function mostraCerca(on, nota) {
@@ -238,7 +250,11 @@ async function ridimensiona(file) {
   c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); // la ricodifica elimina anche i dati GPS
   return new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.82));
 }
-$("#btnFoto").onclick = () => (S.partner ? $("#file").click() : toast("Aspetta di essere connesso a qualcuno."));
+$("#btnFoto").onclick = () => {
+  if (S.cfg.fotoPiene) return toast("Le foto sono sospese temporaneamente: il sito sta per ricevere degli aggiornamenti.");
+  if (!S.partner) return toast("Aspetta di essere connesso a qualcuno.");
+  $("#file").click();
+};
 $("#file").onchange = async (e) => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;
@@ -349,13 +365,14 @@ interruttore($("#vMic"), "mic"); interruttore($("#vCam"), "cam");
 function apriAuth(reg, piano) {
   S.reg = reg;
   if (piano) $("#aPiano").value = piano;
-  $("#authTit").textContent = reg ? "Crea account Premium" : "Accedi";
+  $("#authTit").textContent = reg ? (S.cfg.gratuito ? "Crea account gratuito" : "Crea account Premium") : "Accedi";
   $("#campiReg").hidden = !reg;
   ["#aNome", "#aEta", "#aSesso", "#aAcc"].forEach((s) => ($(s).required = reg));
   $("#aOk").textContent = reg ? "Crea account" : "Accedi";
   $("#aAltro").textContent = reg ? "Ho già un account" : "Crea account";
   $("#aPass").autocomplete = reg ? "new-password" : "current-password";
-  $("#aPrezzo").textContent = S.cfg.prova ? "Modalità di prova: l’abbonamento è gratuito."
+  $("#aPiano").parentElement.hidden = !!S.cfg.gratuito;
+  $("#aPrezzo").textContent = S.cfg.gratuito ? "Registrazione gratuita: nessun pagamento." : S.cfg.prova ? "Modalità di prova: l’abbonamento è gratuito."
     : S.cfg.pagamenti ? "Abbonamento mensile, pagamento sicuro con Stripe. Puoi disdire quando vuoi." : "I pagamenti non sono ancora attivi.";
   $("#aErr").textContent = "";
   if (!$("#dAuth").open) $("#dAuth").showModal();
@@ -381,22 +398,22 @@ $("#fAuth").onsubmit = async (e) => {
     if (j.checkout) { location.href = j.checkout; return; }
     chiudiDlg("#dAuth");
     await aggiornaIo(); riconnetti();
-    toast(j.avviso || (S.io.premium ? "Benvenuto in Beccami Premium!" : "Accesso effettuato."));
+    toast(j.avviso || (S.io.premium ? (S.cfg.gratuito ? "Benvenuto in Beccami!" : "Benvenuto in Beccami Premium!") : "Accesso effettuato."));
   } catch (er) { $("#aErr").textContent = er.message; } finally { $("#aOk").disabled = false; }
 };
 function apriAccount() {
   const c = $("#accCont"), io = S.io;
   const nomePiano = io.piano === "contributore" ? "Contributore" : "Premium";
   c.replaceChildren(el("h2", null, io.nome), el("p", "mute", io.sesso + ", " + io.eta + " anni"),
-    el("p", null, io.premium ? "Abbonamento " + nomePiano + " attivo fino al " + quando(io.premium_fino) + "." : "Abbonamento non attivo."));
+    el("p", null, S.cfg.gratuito ? "Account gratuito: tutte le funzioni sono incluse." : io.premium ? "Abbonamento " + nomePiano + " attivo fino al " + quando(io.premium_fino) + "." : "Abbonamento non attivo."));
   const az = el("div", "cta");
-  if (!io.premium) { const b = el("button", "p", "Attiva Premium · 5 € al mese"); b.onclick = () => pagamento("premium"); az.append(b); }
-  if (!(io.premium && io.piano === "contributore") && (S.cfg.prova || (S.cfg.contributore && S.cfg.contributore.attivo))) {
+  if (!S.cfg.gratuito && !io.premium) { const b = el("button", "p", "Attiva Premium · 5 € al mese"); b.onclick = () => pagamento("premium"); az.append(b); }
+  if (!S.cfg.gratuito && !(io.premium && io.piano === "contributore") && (S.cfg.prova || (S.cfg.contributore && S.cfg.contributore.attivo))) {
     const b = el("button", io.premium ? "p" : "", "Passa a Contributore · 8 € al mese");
     b.onclick = () => { chiudiDlg("#dAcc"); pagamento("contributore"); };
     az.append(b);
   }
-  if (io.premium && (S.cfg.pagamenti || (S.cfg.contributore && S.cfg.contributore.attivo))) {
+  if (!S.cfg.gratuito && io.premium && (S.cfg.pagamenti || (S.cfg.contributore && S.cfg.contributore.attivo))) {
     const b = el("button", null, "Gestisci abbonamento");
     b.onclick = async () => { try { location.href = (await api("/api/portale", {})).url; } catch (e) { toast(e.message); } };
     az.append(b);
@@ -410,12 +427,27 @@ $("#accChiudi").onclick = () => chiudiDlg("#dAcc");
 
 // ---------- ban ----------
 function mostraBan(b) {
+  const extra = !S.cfg.gratuito && S.cfg.pagamenti ? ", oppure sbloccare subito l’accesso" : "";
   $("#banCont").replaceChildren(el("h2", null, "Accesso sospeso"),
     el("p", null, b.permanente ? "Il tuo accesso è stato sospeso in modo permanente."
-      : "Sei stato segnalato da più persone. Potrai tornare il " + quando(b.fino) + ", oppure sbloccare subito l’accesso."));
-  $("#banSblocca").hidden = !!b.permanente || !S.cfg.pagamenti;
+      : "Sei stato segnalato da più persone. Potrai tornare il " + quando(b.fino) + extra + "."));
+  const inAttesa = b.richiesta === "nuova" || b.richiesta === "inviata";
+  $("#fSblocco").hidden = inAttesa;
+  $("#sbNota").hidden = !inAttesa;
+  $("#sbNota").textContent = "Hai già inviato una richiesta: ti risponderemo appena possibile.";
+  $("#sbErr").textContent = "";
+  $("#banSblocca").hidden = !!b.permanente || !S.cfg.pagamenti || !!S.cfg.gratuito;
   if (!$("#dBan").open) $("#dBan").showModal();
 }
+$("#fSblocco").onsubmit = async (e) => {
+  e.preventDefault();
+  $("#sbErr").textContent = ""; $("#sbOk").disabled = true;
+  try {
+    await api("/api/richiesta-sblocco", { messaggio: $("#sbMsg").value });
+    $("#fSblocco").hidden = true; $("#sbNota").hidden = false; $("#sbMsg").value = "";
+    $("#sbNota").textContent = "Richiesta inviata. La esamineremo appena possibile.";
+  } catch (er) { $("#sbErr").textContent = er.message; } finally { $("#sbOk").disabled = false; }
+};
 $("#banChiudi").onclick = () => chiudiDlg("#dBan");
 $("#banSblocca").onclick = async () => { try { location.href = (await api("/api/sblocco", {})).url; } catch (e) { toast(e.message); } };
 
@@ -433,7 +465,7 @@ async function caricaContatti() {
   box.replaceChildren();
   try {
     const j = await api("/api/contatti");
-    if (!j.contatti.length) { box.append(el("p", "mute", "Nessun contatto salvato. Durante una chat con un altro utente Premium premi “Salva”.")); return; }
+    if (!j.contatti.length) { box.append(el("p", "mute", "Nessun contatto salvato. Durante una chat con un altro utente registrato premi “Salva”.")); return; }
     j.contatti.forEach((c) => {
       const r = el("div", "ct"), w = el("div", "who");
       w.append(el("b", null, c.nome), el("span", null, c.mutuo ? c.ultimo || c.sesso + " · " + c.eta + " anni" : "In attesa che ti salvi anche l’altra persona"));
@@ -614,7 +646,8 @@ $("#gElimina").onclick = () => {
 async function init() {
   try { S.cfg = await api("/api/config"); S.io = await api("/api/io"); }
   catch { toast("Impossibile contattare il server. Riprova tra poco."); return; }
-  chips(); intestazione(); connetti();
+  testiPiani(); chips(); intestazione(); connetti();
+  if (S.cfg.sostieni) { const a = $("#sostieni"); a.href = S.cfg.sostieni; a.hidden = false; }
   const q = new URLSearchParams(location.search).get("pagamento");
   if (q) {
     history.replaceState(null, "", "/");

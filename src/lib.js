@@ -55,26 +55,42 @@ export function messaggioBloccato(testo, parole) {
   return normalizza(testo).split(/[^a-z]+/).some((w) => w && parole.has(w)) ? "parola vietata" : null;
 }
 
-// ---------- Ban ----------
-export async function banAttivo(env, uid) {
-  return env.DB.prepare("SELECT motivo, scade_il, permanente FROM ban WHERE utente=? AND (permanente=1 OR scade_il > datetime('now'))").bind(uid).first();
+// ---------- Ban (per account/ospite E per indirizzo IP) ----------
+// L'IP non viene mai salvato in chiaro: si conserva solo un codice (hash con sale) per riconoscerlo.
+function espandiIpv6(ip) {
+  const [a, b = ""] = ip.split("::");
+  const x = a ? a.split(":") : [], y = b ? b.split(":") : [];
+  return [...x, ...Array(Math.max(0, 8 - x.length - y.length)).fill("0"), ...y].map((g) => g.padStart(4, "0"));
 }
-// 7 persone diverse negli ultimi 30 giorni => ban di 7 giorni. Poi il contatore riparte da zero.
-export async function valutaBan(env, uid) {
+export async function hashIp(env, ip) {
+  if (!ip) return "";
+  // IPv6: si usa il prefisso /64 (chi cambia indirizzo dentro la stessa rete resta riconosciuto)
+  const base = ip.includes(":") ? espandiIpv6(ip.toLowerCase()).slice(0, 4).join(":") : ip;
+  return (await sha256((env.IP_SALT || env.WORKER_SECRET || "beccami") + "|" + base)).slice(0, 32);
+}
+export async function banAttivo(env, uid, ip = "") {
+  return env.DB.prepare(
+    `SELECT motivo, scade_il, permanente FROM ban
+     WHERE (utente = ?1 OR (?2 != '' AND ip = ?2)) AND (permanente = 1 OR scade_il > datetime('now'))
+     ORDER BY permanente DESC, scade_il DESC LIMIT 1`
+  ).bind(uid, ip).first();
+}
+// 7 persone diverse negli ultimi 30 giorni => ban di 7 giorni (su account/ospite e su IP). Poi il contatore riparte da zero.
+export async function valutaBan(env, uid, ip = "") {
   await env.DB.batch([
-    env.DB.prepare("DELETE FROM ban WHERE utente=? AND permanente=0 AND scade_il <= datetime('now')").bind(uid),
+    env.DB.prepare("DELETE FROM ban WHERE (utente = ?1 OR (?2 != '' AND ip = ?2)) AND permanente = 0 AND scade_il <= datetime('now')").bind(uid, ip),
     env.DB.prepare(
-      `INSERT OR IGNORE INTO ban (utente, motivo, scade_il)
-       SELECT ?1, '7 segnalazioni', datetime('now','+7 days')
+      `INSERT OR IGNORE INTO ban (utente, motivo, scade_il, ip)
+       SELECT ?1, '7 segnalazioni', datetime('now','+7 days'), ?2
        WHERE (SELECT COUNT(DISTINCT segnalante) FROM segnalazioni
               WHERE segnalato=?1 AND archiviata=0 AND creata_il > datetime('now','-30 days')) >= 7`
-    ).bind(uid),
+    ).bind(uid, ip),
     env.DB.prepare(
       `UPDATE segnalazioni SET archiviata=1 WHERE segnalato=?1 AND archiviata=0
        AND EXISTS (SELECT 1 FROM ban WHERE utente=?1 AND (permanente=1 OR scade_il > datetime('now')))`
     ).bind(uid),
   ]);
-  return banAttivo(env, uid);
+  return banAttivo(env, uid, ip);
 }
 
 // ---------- Stripe (senza librerie esterne) ----------

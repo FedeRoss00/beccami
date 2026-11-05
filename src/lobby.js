@@ -167,10 +167,10 @@ export class Lobby extends DurableObject {
         }
         case "join": {
           if (s.st === "c") this.chiudi(ws);
-          const ban = await banAttivo(this.env, s.u);
+          const ban = await banAttivo(this.env, s.u, s.ip || "");
           if (ban) { this.invia(ws, { t: "banned", fino: ban.permanente ? null : ban.scade_il, motivo: ban.motivo, permanente: !!ban.permanente }); break; }
           const mode = m.mode === "v" ? "v" : "t";
-          if (mode === "v" && !s.p) { this.invia(ws, { t: "errore", x: "La video chat è riservata agli utenti Premium." }); break; }
+          if (mode === "v" && !s.p) { this.invia(ws, { t: "errore", x: "La video chat richiede un account." }); break; }
           this.agg(ws, { st: "q", mode, since: Date.now(), peer: null, m: 0, vis: 1 });
           this.invia(ws, { t: "cerco" });
           this.prova(ws);
@@ -206,7 +206,7 @@ export class Lobby extends DurableObject {
           if (s.st !== "c" || !p) break;
           const ps = this.stato(p);
           await this.env.DB.prepare("INSERT INTO segnalazioni (segnalato, segnalante, tipo) VALUES (?, ?, 'utente')").bind(ps.u, s.u).run();
-          const ban = await valutaBan(this.env, ps.u);
+          const ban = await valutaBan(this.env, ps.u, ps.ip || "");
           this.invia(ws, { t: "segnalato" });
           if (ban) {
             this.invia(p, { t: "banned", fino: ban.permanente ? null : ban.scade_il, motivo: ban.motivo, permanente: !!ban.permanente });
@@ -219,7 +219,7 @@ export class Lobby extends DurableObject {
           const p = this.peerDi(ws);
           if (s.st !== "c" || !p) break;
           const ps = this.stato(p);
-          if (!s.p || !ps.p) { this.invia(ws, { t: "errore", x: "Puoi salvare solo contatti con account Premium." }); break; }
+          if (!s.p || !ps.p) { this.invia(ws, { t: "errore", x: "Puoi salvare solo contatti che hanno un account." }); break; }
           await this.env.DB.prepare("INSERT OR IGNORE INTO contatti (utente, contatto) VALUES (?, ?)").bind(s.u.slice(2), ps.u.slice(2)).run();
           const inverso = await this.env.DB.prepare("SELECT 1 AS ok FROM contatti WHERE utente=? AND contatto=?").bind(ps.u.slice(2), s.u.slice(2)).first();
           if (inverso) {

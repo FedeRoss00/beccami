@@ -7,20 +7,37 @@ export { Lobby, Stanza };
 const MAX_FOTO = 2 * 1024 * 1024;
 const MSG_FOTO = "Le foto non sono disponibili al momento: il servizio foto non è ancora attivo o non risponde. Riprova più tardi.";
 const MSG_PAGAMENTI = "I pagamenti non sono ancora attivi.";
+const MSG_FOTO_PIENE = "Le foto sono sospese temporaneamente: il sito sta per ricevere degli aggiornamenti. Riprova più avanti.";
+// Modalità gratuita: ogni utente registrato ha tutte le funzioni, senza abbonamenti né pagamenti.
+// (se la variabile manca, il sito resta gratuito: i pagamenti si attivano solo con "0")
+const gratis = (env) => env.MODALITA_GRATUITA !== "0";
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const p = url.pathname;
     if (!p.startsWith("/api/") && p !== "/ws" && p !== "/ws-stanza") return env.ASSETS.fetch(req);
     try {
-      return await instrada(req, env, url, p);
+      return await instrada(req, env, url, p, ctx);
     } catch (e) {
       console.error(e);
       return L.json({ errore: "Errore interno. Riprova tra poco." }, 500);
     }
   },
 };
+
+let _fotoN = { t: 0, n: 0 }, _pienoN8n = 0;
+// true se l'archivio foto è pieno: tetto FOTO_MAX raggiunto oppure n8n ha risposto "spazio esaurito" (507)
+async function fotoPiene(env) {
+  if (Date.now() - _pienoN8n < 600000) return true;
+  const max = parseInt(env.FOTO_MAX || "0", 10);
+  if (!(max > 0)) return false;
+  if (Date.now() - _fotoN.t > 60000) {
+    const r = await env.DB.prepare("SELECT COUNT(*) AS c FROM foto WHERE stato != 'eliminata'").first();
+    _fotoN = { t: Date.now(), n: r.c };
+  }
+  return _fotoN.n >= max;
+}
 
 const corpo = async (req) => {
   try {
@@ -32,7 +49,7 @@ const corpo = async (req) => {
 };
 const prezzoDi = (env, piano) => (piano === "contributore" ? env.STRIPE_PRICE_CONTRIBUTORE : env.STRIPE_PRICE_PREMIUM);
 const pagamentiAttivi = (env, piano = "premium") => !!(env.STRIPE_SECRET_KEY && prezzoDi(env, piano));
-const contributoreAttivo = (id) => !!(id.premium && id.utente && id.utente.piano === "contributore");
+const contributoreAttivo = (id, env) => (gratis(env) ? !!id.utente : !!(id.premium && id.utente && id.utente.piano === "contributore"));
 const MAX_STANZE = 3;
 
 // Chi sta facendo la richiesta: ospite (cookie "sid") o utente registrato (cookie "sess").
@@ -50,8 +67,9 @@ async function chi(req, env) {
       "SELECT u.* FROM sessioni s JOIN utenti u ON u.id = s.utente WHERE s.token_hash = ? AND s.scade_il > datetime('now')"
     ).bind(await L.sha256(tok)).first();
   }
-  const premium = !!(utente && utente.premium_fino && utente.premium_fino > L.ora());
-  return { uid: utente ? "u_" + utente.id : "g_" + sid, utente, premium, set };
+  const premium = gratis(env) ? !!utente : !!(utente && utente.premium_fino && utente.premium_fino > L.ora());
+  const ip = await L.hashIp(env, req.headers.get("cf-connecting-ip") || "");
+  return { uid: utente ? "u_" + utente.id : "g_" + sid, utente, premium, set, ip };
 }
 
 async function nuovaSessione(env, utenteId) {
@@ -80,7 +98,7 @@ async function checkoutPiano(env, utente, piano, origin) {
   return (await L.stripe(env, "/checkout/sessions", par)).url;
 }
 
-async function instrada(req, env, url, p) {
+async function instrada(req, env, url, p, ctx) {
   const m = req.method;
   const origin = url.origin;
 
@@ -89,11 +107,14 @@ async function instrada(req, env, url, p) {
   if (p === "/api/config") {
     return L.json({
       tags: L.TAGS,
-      prova: env.MODALITA_PROVA === "1",
-      pagamenti: pagamentiAttivi(env),
+      gratuito: gratis(env),
+      prova: !gratis(env) && env.MODALITA_PROVA === "1",
+      pagamenti: !gratis(env) && pagamentiAttivi(env),
       foto: !!(env.N8N_URL && env.WORKER_SECRET),
+      fotoPiene: await fotoPiene(env),
+      sostieni: /^https:\/\//.test(env.SOSTIENI_URL || "") ? env.SOSTIENI_URL : "",
       prezzo: 5,
-      contributore: { attivo: pagamentiAttivi(env, "contributore"), prezzo: 8 },
+      contributore: { attivo: !gratis(env) && pagamentiAttivi(env, "contributore"), prezzo: 8 },
       sblocco: 15,
     });
   }
@@ -101,22 +122,24 @@ async function instrada(req, env, url, p) {
   const id = await chi(req, env);
   const ok = (d, s = 200) => L.json(d, s, id.set);
   const richiediLogin = () => (id.utente ? null : ok({ errore: "Devi accedere." }, 401));
-  const richiediPremium = () => (id.premium ? null : ok({ errore: "Serve un abbonamento Premium attivo." }, 403));
+  const richiediPremium = () => (id.premium ? null : ok({ errore: gratis(env) ? "Per usare questa funzione serve un account (è gratuito)." : "Serve un abbonamento Premium attivo." }, 403));
   const rotta = m + " " + p;
 
   // ---------- Account ----------
   if (rotta === "GET /api/io") {
     const u = id.utente;
-    const ban = await L.banAttivo(env, id.uid);
+    const ban = await L.banAttivo(env, id.uid, id.ip);
+    const rq = ban ? await env.DB.prepare("SELECT stato FROM richieste_sblocco WHERE (utente = ?1 OR (?2 != '' AND ip = ?2)) ORDER BY id DESC LIMIT 1").bind(id.uid, id.ip).first() : null;
     return ok({
       registrato: !!u, id: u?.id || null, nome: u?.nome || null, eta: u?.eta || null, sesso: u?.sesso || null,
       avatar: u?.avatar ? "/api/avatar/" + u.id : null,
-      premium: id.premium, premium_fino: u?.premium_fino || null, piano: u?.piano || null, contributore: contributoreAttivo(id),
-      ban: ban ? { fino: ban.permanente ? null : ban.scade_il, motivo: ban.motivo, permanente: !!ban.permanente } : null,
+      premium: id.premium, premium_fino: u?.premium_fino || null, piano: u ? (gratis(env) ? "contributore" : u.piano) : null, contributore: contributoreAttivo(id, env), gratuito: gratis(env),
+      ban: ban ? { fino: ban.permanente ? null : ban.scade_il, motivo: ban.motivo, permanente: !!ban.permanente, richiesta: rq ? rq.stato : null } : null,
     });
   }
 
   if (rotta === "POST /api/registrati") {
+    if (await L.banAttivo(env, "", id.ip)) return ok({ errore: "Al momento non puoi creare un account." }, 403);
     const b = await corpo(req);
     const nome = String(b.nome || "").trim();
     const email = String(b.email || "").trim().toLowerCase();
@@ -143,6 +166,7 @@ async function instrada(req, env, url, p) {
       .bind(uid, email, await L.hashPassword(password), nome, eta, b.sesso, avatar, piano).run();
     const set = [...id.set, await nuovaSessione(env, uid)];
     const utente = { id: uid, email, stripe_cliente: null };
+    if (gratis(env)) return L.json({ ok: true, gratis: true }, 200, set);
     if (env.MODALITA_PROVA === "1") {
       await env.DB.prepare("UPDATE utenti SET premium_fino = ? WHERE id = ?").bind(L.ora(30 * 86400), uid).run();
       return L.json({ ok: true, prova: true }, 200, set);
@@ -174,6 +198,7 @@ async function instrada(req, env, url, p) {
   // ---------- Pagamenti ----------
   if (rotta === "POST /api/checkout") {
     const e = richiediLogin(); if (e) return e;
+    if (gratis(env)) return ok({ errore: "Il sito è gratuito: non serve nessun abbonamento." }, 400);
     const piano = (await corpo(req)).piano === "contributore" ? "contributore" : "premium";
     if (env.MODALITA_PROVA === "1") {
       await env.DB.prepare("UPDATE utenti SET piano = ?, premium_fino = ? WHERE id = ?").bind(piano, L.ora(30 * 86400), id.utente.id).run();
@@ -203,7 +228,8 @@ async function instrada(req, env, url, p) {
     } catch (er) { console.error(er); return ok({ errore: "Impossibile aprire la gestione abbonamento." }, 502); }
   }
   if (rotta === "POST /api/sblocco") {
-    const ban = await L.banAttivo(env, id.uid);
+    if (gratis(env)) return ok({ errore: "Lo sblocco a pagamento non è attivo: la sospensione termina da sola." }, 400);
+    const ban = await L.banAttivo(env, id.uid, id.ip);
     if (!ban) return ok({ errore: "Non risulti bannato." }, 400);
     if (ban.permanente) return ok({ errore: "Questo ban non può essere rimosso a pagamento." }, 403);
     if (!env.STRIPE_SECRET_KEY || !env.STRIPE_PRICE_SBLOCCO) return ok({ errore: MSG_PAGAMENTI }, 503);
@@ -241,7 +267,7 @@ async function instrada(req, env, url, p) {
     if (o && new URL(o).host !== url.host) return new Response("Origine non consentita", { status: 403 });
     if (!L.leggiCookie(req, "sid")) return new Response("Ricarica la pagina", { status: 400 });
     const u = id.utente;
-    const info = { u: id.uid, n: id.premium ? u.nome : "", p: id.premium ? 1 : 0, e: id.premium ? u.eta : 0, s: id.premium ? u.sesso : "", a: id.premium && u.avatar ? 1 : 0 };
+    const info = { u: id.uid, ip: id.ip, n: id.premium ? u.nome : "", p: id.premium ? 1 : 0, e: id.premium ? u.eta : 0, s: id.premium ? u.sesso : "", a: id.premium && u.avatar ? 1 : 0 };
     const h = new Headers(req.headers);
     h.set("x-info", encodeURIComponent(JSON.stringify(info)));
     const stub = env.LOBBY.get(env.LOBBY.idFromName("principale"));
@@ -252,7 +278,7 @@ async function instrada(req, env, url, p) {
   if (m === "GET" && p.startsWith("/api/avatar/")) {
     const uid = p.slice(12);
     if (!/^[a-f0-9]{16}$/.test(uid)) return new Response("Non trovato", { status: 404 });
-    const r = await env.DB.prepare("SELECT avatar FROM utenti WHERE id = ? AND premium_fino > datetime('now')").bind(uid).first();
+    const r = await env.DB.prepare(`SELECT avatar FROM utenti WHERE id = ? AND (${gratis(env) ? 1 : 0} = 1 OR premium_fino > datetime('now'))`).bind(uid).first();
     if (!r || !r.avatar) return new Response("Non trovato", { status: 404 });
     const bin = Uint8Array.from(atob(r.avatar), (c) => c.charCodeAt(0));
     return new Response(bin, { headers: { "content-type": "image/jpeg", "cache-control": "public, max-age=3600" } });
@@ -286,8 +312,9 @@ async function instrada(req, env, url, p) {
 
   // ---------- Foto a visualizzazione singola (archiviate su n8n) ----------
   if (rotta === "POST /api/foto") {
-    if (await L.banAttivo(env, id.uid)) return ok({ errore: "Al momento non puoi inviare foto." }, 403);
+    if (await L.banAttivo(env, id.uid, id.ip)) return ok({ errore: "Al momento non puoi inviare foto." }, 403);
     if (!env.N8N_URL || !env.WORKER_SECRET) return ok({ errore: MSG_FOTO, servizio: false }, 503);
+    if (await fotoPiene(env)) return ok({ errore: MSG_FOTO_PIENE, pieno: true }, 503);
     const fd = await req.formData();
     const f = fd.get("file");
     if (!f || typeof f === "string" || f.size < 100 || f.size > MAX_FOTO) return ok({ errore: "Foto non valida o troppo grande (massimo 2 MB)." }, 400);
@@ -303,8 +330,10 @@ async function instrada(req, env, url, p) {
     try {
       r = await fetch(env.N8N_URL + "/webhook/foto-carica", { method: "POST", headers: { "x-worker-secret": env.WORKER_SECRET }, body: out, signal: AbortSignal.timeout(10000) });
     } catch {}
+    if (r && r.status === 507) { _pienoN8n = Date.now(); return ok({ errore: MSG_FOTO_PIENE, pieno: true }, 503); } // n8n: spazio esaurito
     if (!r || !r.ok) return ok({ errore: MSG_FOTO, servizio: false }, 503);
-    await env.DB.prepare("INSERT INTO foto (id, token_hash, mittente) VALUES (?, ?, ?)").bind(fid, await L.sha256(tok), id.uid).run();
+    await env.DB.prepare("INSERT INTO foto (id, token_hash, mittente, ip) VALUES (?, ?, ?, ?)").bind(fid, await L.sha256(tok), id.uid, id.ip).run();
+    _fotoN.n++;
     return ok({ tok });
   }
   if (rotta === "POST /api/foto/vedi") {
@@ -331,13 +360,30 @@ async function instrada(req, env, url, p) {
   if (rotta === "POST /api/foto/segnala") {
     const tok = String((await corpo(req)).tok || "");
     if (!/^[a-f0-9]{48}$/.test(tok)) return ok({ errore: "Link non valido." }, 400);
-    const row = await env.DB.prepare("SELECT id, mittente FROM foto WHERE token_hash=? AND destinatario=?").bind(await L.sha256(tok), id.uid).first();
+    const row = await env.DB.prepare("SELECT id, mittente, ip FROM foto WHERE token_hash=? AND destinatario=?").bind(await L.sha256(tok), id.uid).first();
     if (!row) return ok({ errore: "Foto non trovata." }, 404);
     await env.DB.batch([
       env.DB.prepare("UPDATE foto SET segnalata=1 WHERE id=?").bind(row.id),
       env.DB.prepare("INSERT INTO segnalazioni (segnalato, segnalante, tipo, foto_id) VALUES (?, ?, 'foto', ?)").bind(row.mittente, id.uid, row.id),
     ]);
-    await L.valutaBan(env, row.mittente);
+    await L.valutaBan(env, row.mittente, row.ip);
+    return ok({ ok: true });
+  }
+
+  // ---------- Richiesta di rimozione del blocco ----------
+  if (rotta === "POST /api/richiesta-sblocco") {
+    const ban = await L.banAttivo(env, id.uid, id.ip);
+    if (!ban) return ok({ errore: "Non risulti bloccato." }, 400);
+    const testo = String((await corpo(req)).messaggio || "").trim();
+    if (testo.length < 10 || testo.length > 300) return ok({ errore: "Scrivi una frase di almeno 10 caratteri (massimo 300)." }, 400);
+    const gia = await env.DB.prepare(
+      "SELECT id FROM richieste_sblocco WHERE (utente = ?1 OR (?2 != '' AND ip = ?2)) AND stato IN ('nuova','inviata') AND creata_il > datetime('now','-1 day')"
+    ).bind(id.uid, id.ip).first();
+    if (gia) return ok({ errore: "Hai già inviato una richiesta: ti risponderemo appena possibile." }, 429);
+    const r = await env.DB.prepare(
+      "INSERT INTO richieste_sblocco (utente, ip, messaggio, motivo_ban, ban_scade) VALUES (?, ?, ?, ?, ?) RETURNING id"
+    ).bind(id.uid, id.ip, testo, ban.motivo, ban.permanente ? "permanente" : ban.scade_il).first();
+    if (ctx && env.N8N_URL && env.WORKER_SECRET) ctx.waitUntil(inviaRichiesta(env, { id: r.id, utente: id.uid, ip: id.ip, messaggio: testo, motivo: ban.motivo, ban_scade: ban.permanente ? "permanente" : ban.scade_il }));
     return ok({ ok: true });
   }
 
@@ -349,13 +395,13 @@ async function instrada(req, env, url, p) {
     const { results } = await env.DB.prepare(
       `SELECT s.id, s.nome, s.descrizione, s.categoria, s.online, s.max_membri, s.proprietario, u.nome AS prop_nome
        FROM stanze s JOIN utenti u ON u.id = s.proprietario
-       WHERE s.stato = 'attiva' AND u.piano = 'contributore' AND u.premium_fino > datetime('now')${filtro}
+       WHERE s.stato = 'attiva' AND (${gratis(env) ? 1 : 0} = 1 OR (u.piano = 'contributore' AND u.premium_fino > datetime('now')))${filtro}
        ORDER BY s.online DESC, s.creata_il DESC LIMIT 100`
     ).all();
     return ok({ stanze: results.map((r) => ({ ...r, mia: r.proprietario === id.utente.id, proprietario: undefined })) });
   }
   if (rotta === "POST /api/stanze") {
-    if (!contributoreAttivo(id)) return ok({ errore: "Per creare una stanza serve l’abbonamento Contributore." }, 403);
+    if (!contributoreAttivo(id, env)) return ok({ errore: gratis(env) ? "Per creare una stanza serve un account (è gratuito)." : "Per creare una stanza serve l’abbonamento Contributore." }, 403);
     const b = await corpo(req);
     const nome = String(b.nome || "").trim(), descrizione = String(b.descrizione || "").trim(), regole = String(b.regole || "").trim();
     const cat = parseInt(b.categoria, 10);
@@ -397,7 +443,7 @@ async function instrada(req, env, url, p) {
     if (r.errore) return new Response(r.errore, { status: r.status });
     const s = r.stanza, u = id.utente;
     const info = {
-      u: u.id, n: u.nome, a: u.avatar ? 1 : 0, r: s.proprietario === u.id ? "o" : "m", sid, max: s.max_membri,
+      u: u.id, ip: id.ip, n: u.nome, a: u.avatar ? 1 : 0, r: s.proprietario === u.id ? "o" : "m", sid, max: s.max_membri,
       stanza: { nome: s.nome, descrizione: s.descrizione, regole: s.regole, categoria: s.categoria, proprietario: s.prop_nome },
     };
     const h = new Headers(req.headers);
@@ -409,16 +455,29 @@ async function instrada(req, env, url, p) {
 }
 
 async function statoStanza(env, id, sid) {
-  if (await L.banAttivo(env, id.uid)) return { errore: "Al momento non puoi entrare nelle stanze.", status: 403 };
+  if (await L.banAttivo(env, id.uid, id.ip)) return { errore: "Al momento non puoi entrare nelle stanze.", status: 403 };
   const s = await env.DB.prepare(
     `SELECT s.*, u.nome AS prop_nome FROM stanze s JOIN utenti u ON u.id = s.proprietario
-     WHERE s.id = ? AND s.stato = 'attiva' AND u.piano = 'contributore' AND u.premium_fino > datetime('now')`
+     WHERE s.id = ? AND s.stato = 'attiva' AND (${gratis(env) ? 1 : 0} = 1 OR (u.piano = 'contributore' AND u.premium_fino > datetime('now')))`
   ).bind(sid).first();
   if (!s) return { errore: "Stanza non trovata o non più attiva.", status: 404 };
   if (await env.DB.prepare("SELECT 1 AS x FROM stanze_ban WHERE stanza = ? AND utente = ?").bind(sid, id.utente.id).first()) {
     return { errore: "Sei stato espulso da questa stanza.", status: 403 };
   }
   return { stanza: s };
+}
+
+// Avvisa n8n (che ti scrive l'email). Se n8n non risponde la richiesta resta "nuova" e compare nel riepilogo.
+async function inviaRichiesta(env, r) {
+  try {
+    const sql = `DELETE FROM ban WHERE utente = '${r.utente}'${r.ip ? ` OR ip = '${r.ip}'` : ""}; UPDATE richieste_sblocco SET stato = 'accettata' WHERE id = ${r.id};`;
+    const res = await fetch(env.N8N_URL + "/webhook/richiesta-sblocco", {
+      method: "POST", headers: { "x-worker-secret": env.WORKER_SECRET, "content-type": "application/json" },
+      body: JSON.stringify({ ...r, quando: L.ora(), sql_sblocca: sql, sql_rifiuta: `UPDATE richieste_sblocco SET stato = 'rifiutata' WHERE id = ${r.id};` }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) await env.DB.prepare("UPDATE richieste_sblocco SET stato = 'inviata' WHERE id = ? AND stato = 'nuova'").bind(r.id).run();
+  } catch (e) { console.error("richiesta di sblocco non inviata a n8n", e); }
 }
 
 // ---------- Webhook Stripe ----------
@@ -457,7 +516,8 @@ async function admin(req, env, p, m) {
     const { results } = await env.DB.prepare("SELECT utente, motivo, creato_il, scade_il FROM ban WHERE notificato = 0").all();
     const f = await env.DB.prepare("SELECT COUNT(*) AS c FROM segnalazioni WHERE tipo='foto' AND creata_il > datetime('now','-1 day')").first();
     const s = await env.DB.prepare("SELECT COUNT(*) AS c FROM segnalazioni WHERE creata_il > datetime('now','-1 day')").first();
-    return L.json({ ban_nuovi: results, foto_segnalate_24h: f.c, segnalazioni_24h: s.c });
+    const q = await env.DB.prepare("SELECT id, utente, ip, messaggio, motivo_ban, ban_scade, creata_il FROM richieste_sblocco WHERE stato IN ('nuova','inviata') ORDER BY id").all();
+    return L.json({ ban_nuovi: results, foto_segnalate_24h: f.c, segnalazioni_24h: s.c, richieste_sblocco: q.results });
   }
   if (m === "POST" && p === "/api/admin/riepilogo-letto") {
     await env.DB.prepare("UPDATE ban SET notificato = 1 WHERE notificato = 0").run();

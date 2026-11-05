@@ -93,7 +93,7 @@ export class Stanza extends DurableObject {
           const bersagli = this.aperti().filter((w) => this.st(w).u === id);
           if (!bersagli.length) break;
           await this.env.DB.prepare("INSERT INTO segnalazioni (segnalato, segnalante, tipo) VALUES (?, ?, 'utente')").bind("u_" + id, "u_" + s.u).run();
-          const ban = await valutaBan(this.env, "u_" + id);
+          const ban = await valutaBan(this.env, "u_" + id, this.st(bersagli[0]).ip || "");
           this.inv(ws, { t: "segnalato" });
           const nome = this.st(bersagli[0]).n;
           this.aperti().filter((w) => this.st(w).r === "o").forEach((w) => this.inv(w, { t: "sistema", x: s.n + " ha segnalato " + nome + "." }));

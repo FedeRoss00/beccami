@@ -37,21 +37,21 @@
       <label class="check"><input type="checkbox" id="age"><span>Ho almeno 18 anni e accetto i <a href="/termini.html">Termini</a> e l’<a href="/privacy.html">Informativa privacy</a>.</span></label>
       <div class="cta">
         <button class="p" id="go">Inizia a chattare</button>
-        <button id="reg">Crea account Premium · 5 € al mese</button>
-        <button id="regC">Diventa Contributore · 8 € al mese</button>
+        <button id="reg">Crea account gratuito</button>
+        <button id="regC" hidden>Diventa Contributore · 8 € al mese</button>
       </div>
 
       <div class="grid">
-        <div class="card"><h3>Anonimo e leggero</h3><p>Senza registrazione e senza cronologia salvata. Solo gli utenti Premium possono conservare le chat con i contatti che scelgono.</p></div>
+        <div class="card" id="cardA"><h3>Anonimo e leggero</h3><p>Senza registrazione e senza cronologia salvata. Con un account gratuito puoi conservare le chat con i contatti che scegli.</p></div>
         <div class="card"><h3>Foto che si autodistruggono</h3><p>Il link si apre una volta sola, poi la foto non è più visibile. Gli screenshot non si possono impedire: invia solo ciò che sei pronto a condividere.</p></div>
         <div class="card"><h3>Salta quando vuoi</h3><p>Premi due volte “Salta” e passi alla persona successiva. Puoi anche segnalare chi non rispetta le regole.</p></div>
-        <div class="card prem"><h3>Premium · 5 € al mese</h3><p>Profilo con nome, età, sesso e foto, video chat, contatti da salvare per riprendere la conversazione e accesso a tutte le stanze.</p></div>
-        <div class="card prem"><h3>Contributore · 8 € al mese</h3><p>Tutto il Premium, più la possibilità di creare stanze tematiche con le tue regole, dove si uniscono gli abbonati.</p></div>
+        <div class="card prem" id="cardP"><h3>Account gratuito</h3><p>Crea un account senza pagare: profilo con nome, età, sesso e foto, video chat, contatti da salvare per riprendere la conversazione e accesso alle stanze.</p></div>
+        <div class="card prem" id="cardC"><h3>Crea le tue stanze</h3><p>Con un account puoi aprire stanze tematiche (fino a 3) con le tue regole, dove si uniscono gli altri iscritti.</p></div>
       </div>
 
       <footer>
         <a href="/privacy.html">Privacy</a><a href="/termini.html">Termini</a><a href="/regole.html">Regole della community</a>
-        <span>Solo maggiorenni · Fatto per l’Italia</span>
+        <a id="sostieni" href="#" target="_blank" rel="noopener" hidden>Sostieni Beccami</a><span>Solo maggiorenni · Fatto per l’Italia</span>
       </footer>
     </div>
   </main>
@@ -167,7 +167,16 @@
   <div class="cta"><button type="button" id="fSegnala">Segnala foto</button><button type="button" class="p" id="fChiudi">Chiudi</button></div>
 </dialog>
 
-<dialog id="dBan"><div id="banCont"></div><div class="cta"><button type="button" id="banSblocca" hidden>Sblocca ora · 15 €</button><button type="button" id="banChiudi">Chiudi</button></div></dialog>
+<dialog id="dBan">
+  <div id="banCont"></div>
+  <form id="fSblocco">
+    <div class="campi"><label>Pensi sia un errore? Chiedi la rimozione del blocco con una frase<textarea id="sbMsg" rows="3" minlength="10" maxlength="300" required></textarea></label></div>
+    <p class="err" id="sbErr" role="alert"></p>
+    <div class="cta"><button class="p" type="submit" id="sbOk">Invia richiesta</button></div>
+  </form>
+  <p class="mute" id="sbNota" hidden>Hai già inviato una richiesta: ti risponderemo appena possibile.</p>
+  <div class="cta"><button type="button" id="banSblocca" hidden>Sblocca ora · 15 €</button><button type="button" id="banChiudi">Chiudi</button></div>
+</dialog>
 
 <div id="toast" role="status"></div>
 <script src="/app.js"></script>
